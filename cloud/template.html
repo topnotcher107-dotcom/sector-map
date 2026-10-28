@@ -1,0 +1,46 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>업종별 등락률 맵</title>
+<style>body{font-family:'Malgun Gothic',sans-serif;margin:12px;background:#fff;color:#111}
+h2{margin:6px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.box{height:560px}
+table{border-collapse:collapse;width:100%;}th{cursor:pointer;user-select:none;background:#f3f4f6}th,td{padding:5px 10px;border-bottom:1px solid #ddd;text-align:right}th:nth-child(2),td:nth-child(2){text-align:left}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}table{font-size:14px}.up{color:#dc2626}.dn{color:#1d4ed8}#detail{margin-top:16px}#analysis{background:#f9fafb;border-left:4px solid #dc2626;padding:8px 14px;margin:10px 0;line-height:1.6}#analysis:empty{display:none}small{color:#666}</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script></head><body>
+<h2>한국 주식 업종별 등락률 맵 ({{DATE}} 종가)</h2>
+<small>크기 = 업종 시가총액 · 색 = 등락률(빨강 상승/파랑 하락) · 업종 박스를 클릭하면 등락률 상위 20개 종목이 아래에 표시됩니다</small>
+<div id="analysis">{{ANALYSIS}}</div>
+<div class="grid"><div><h3>상승률 상위 10개 업종</h3><div id="up" class="box"></div></div>
+<div><h3>하락률 상위 10개 업종</h3><div id="down" class="box"></div></div></div>
+<div id="detail"></div>
+<script>
+const S=/*SECS*/,ST=/*STOCKS*/;
+function draw(id,list){
+ const mx=Math.max(...list.map(s=>Math.abs(s.rate)),1);
+ Plotly.newPlot(id,[{type:'treemap',labels:list.map(s=>s.name),parents:list.map(_=>''),values:list.map(s=>Math.max(s.cap,0.05)),
+  text:list.map(s=>(s.rate>0?'+':'')+s.rate.toFixed(2)+'%'),texttemplate:'<b>%{label}</b><br>%{text}',
+  customdata:list.map(s=>[s.rate,s.cap,s.n,s.up,s.down]),
+  hovertemplate:'<b>%{label}</b><br>등락률 %{customdata[0]:+.2f}%<br>시총 %{customdata[1]:,.1f}조원<br>종목 %{customdata[2]}개 (↑%{customdata[3]} ↓%{customdata[4]})<extra></extra>',
+  marker:{colors:list.map(s=>s.rate),colorscale:[[0,'#1d4ed8'],[0.5,'#e5e7eb'],[1,'#dc2626']],cmid:0,cmin:-mx,cmax:mx,line:{width:2,color:'#fff'}},
+  textfont:{size:12},pathbar:{visible:false}}],
+ {margin:{t:5,l:5,r:5,b:5},font:{family:'Malgun Gothic'},hoverlabel:{font:{size:19,color:'#000',family:'Malgun Gothic'},bgcolor:'#fff',bordercolor:'#999',align:'left'}},{responsive:true});
+ document.getElementById(id).on('plotly_click',e=>{show(e.points[0].label);return false});
+}
+let cur=null,sortst={};
+const COLS=[['n','종목'],['m','시총(억)'],['per','PER'],['pbr','PBR'],['r','등락률'],['k','섹터 등락 기여도(%p)'],['p','현재가']];
+function tbl(key,rows){
+ const st=sortst[key]; const num=(r,c)=>c=='p'?parseInt(r.p.replace(/,/g,'')):r[c];
+ if(st){rows=[...rows].sort((a,b)=>{if(st.c=='n')return st.d*a.n.localeCompare(b.n);const x=num(a,st.c),y=num(b,st.c);if(x==null)return 1;if(y==null)return -1;return st.d*(x-y)})}
+ const f=v=>v==null?'-':v.toFixed(2);
+ let h='<table><tr><th>#</th>'+COLS.map(c=>`<th onclick="srt('${key}','${c[0]}')">${c[1]}${st&&st.c==c[0]?(st.d>0?' ▲':' ▼'):''}</th>`).join('')+'</tr>';
+ rows.forEach((r,i)=>{h+=`<tr><td>${i+1}</td><td>${r.n} <small>${r.c}</small></td><td>${Math.round(r.m/1e8).toLocaleString()}</td><td>${f(r.per)}</td><td>${f(r.pbr)}</td><td class="${r.r>=0?'up':'dn'}">${r.r>0?'+':''}${r.r.toFixed(2)}%</td><td class="${r.k>=0?'up':'dn'}">${r.k>0?'+':''}${r.k.toFixed(3)}</td><td>${r.p}</td></tr>`});
+ return h+'</table>';
+}
+function srt(key,c){const s=sortst[key];sortst[key]={c,d:s&&s.c==c?-s.d:(c=='n'?1:-1)};render()}
+function show(name){cur=name;sortst={};render();document.getElementById('detail').scrollIntoView({behavior:'smooth'})}
+function render(){
+ const name=cur,s=[...S.up,...S.down].find(x=>x.name==name);
+ document.getElementById('detail').innerHTML=`<h3>${name} <small>(업종 ${s.rate>0?'+':''}${s.rate.toFixed(2)}%) · 컬럼 제목을 클릭하면 오름차순/내림차순 정렬</small></h3>
+ <div class="two"><div><h4>① ${s.rate<0?'하락률':'등락률'} 기준 상위 20개</h4>${tbl('a',ST[name].a)}</div>
+ <div><h4>② 섹터 등락 기여도 기준 ${s.rate<0?'하락 상위':'상위'} 20개</h4>${tbl('b',ST[name].b)}</div></div>
+ <small>기여도 = (전일 시총 ÷ 업종 전일 시총 합) × 종목 등락률. 업종 내 종목 기여도의 합이 업종 등락률에 해당합니다.</small>`;
+}
+draw('up',S.up);draw('down',S.down);
+</script></body></html>
